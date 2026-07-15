@@ -7,6 +7,7 @@ export const useRoomStore = create((set, get) => ({
   status: 'waiting', // 'waiting' | 'playing' | 'gameover'
   winner: null,
   totalEmptyCells: 0,
+  difficulty: 'medium',
   toasts: [],
 
   setRoom: (roomName, playerName) => set({ roomName, playerName }),
@@ -14,7 +15,8 @@ export const useRoomStore = create((set, get) => ({
   updateRoomState: (data) => set({
     status: data.status,
     players: data.players || {},
-    totalEmptyCells: data.totalEmptyCells || 0
+    totalEmptyCells: data.totalEmptyCells || 0,
+    difficulty: data.difficulty || get().difficulty || 'medium'
   }),
 
   setWinner: (winner) => set({ winner }),
@@ -25,7 +27,8 @@ export const useRoomStore = create((set, get) => ({
     players: {},
     status: 'waiting',
     winner: null,
-    totalEmptyCells: 0
+    totalEmptyCells: 0,
+    difficulty: 'medium'
   }),
 
   addToast: (message, type = 'info') => {

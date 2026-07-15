@@ -4,11 +4,13 @@ import { useRoomStore } from '../../store/useRoomStore';
 import { useSocketStore } from '../../store/useSocketStore';
 import { Button } from '../ui/Button';
 import { Copy, LogOut } from 'lucide-react';
+import { Badge } from '../ui/Badge';
 
 export const RoomHeader = () => {
   const roomName = useRoomStore((state) => state.roomName);
   const addToast = useRoomStore((state) => state.addToast);
   const clearRoom = useRoomStore((state) => state.clearRoom);
+  const difficulty = useRoomStore((state) => state.difficulty);
 
   const socket = useSocketStore((state) => state.socket);
   const disconnect = useSocketStore((state) => state.disconnect);
@@ -47,6 +49,22 @@ export const RoomHeader = () => {
         >
           <Copy className="h-4 w-4" />
         </Button>
+        {difficulty && (
+          <Badge
+            variant={
+              difficulty === 'easy'
+                ? 'secondary'
+                : difficulty === 'medium'
+                ? 'default'
+                : difficulty === 'hard'
+                ? 'danger'
+                : 'outline'
+            }
+            className="uppercase tracking-wider px-2 py-0.5 border-3 font-black text-[10px]"
+          >
+            {difficulty}
+          </Badge>
+        )}
       </div>
 
       <Button

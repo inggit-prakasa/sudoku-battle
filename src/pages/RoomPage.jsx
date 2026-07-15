@@ -9,16 +9,18 @@ import PlayerList from '../components/room/PlayerList';
 import JoinRoom from '../components/lobby/JoinRoom';
 import { Button } from '../components/ui/Button';
 import { Users, Play } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 export const RoomPage = () => {
   const { roomId } = useParams();
   const navigate = useNavigate();
-  
+
   const roomName = useRoomStore((state) => state.roomName);
   const playerName = useRoomStore((state) => state.playerName);
   const players = useRoomStore((state) => state.players);
   const status = useRoomStore((state) => state.status);
-  
+  const difficulty = useRoomStore((state) => state.difficulty);
+
   const socket = useSocketStore((state) => state.socket);
   const connect = useSocketStore((state) => state.connect);
 
@@ -71,6 +73,12 @@ export const RoomPage = () => {
     }
   };
 
+  const handleDifficultyChange = (level) => {
+    if (socket) {
+      socket.emit('change-difficulty', { difficulty: level });
+    }
+  };
+
   return (
     <AppShell>
       <div className="flex flex-col gap-6">
@@ -89,14 +97,42 @@ export const RoomPage = () => {
             </h3>
 
             {isHost ? (
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-4">
                 <p className="text-xs text-muted font-semibold leading-relaxed">
-                  As the **Host**, you can start the battle once all players have joined.
+                  As the **Host**, you can select the game difficulty and start the battle once all players have joined.
                 </p>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] font-extrabold tracking-wide uppercase text-muted">
+                    Game Difficulty
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {['easy', 'medium', 'hard', 'test'].map((level) => {
+                      const isSelected = difficulty === level;
+                      return (
+                        <button
+                          key={level}
+                          type="button"
+                          onClick={() => handleDifficultyChange(level)}
+                          className={cn(
+                            "border-3 border-main px-3 py-2 text-xs font-black uppercase transition-all duration-100 select-none active:translate-x-[2px] active:translate-y-[2px] active:shadow-none text-center",
+                            {
+                              "bg-primary text-white shadow-flat-sm": isSelected,
+                              "bg-white text-main hover:bg-accent-highlight shadow-flat-sm": !isSelected
+                            }
+                          )}
+                        >
+                          {level}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <Button
                   onClick={handleStartGame}
                   variant="default"
-                  className="w-full flex items-center justify-center gap-2 py-3"
+                  className="w-full flex items-center justify-center gap-2 py-3 mt-1"
                   disabled={playerEntries.length === 0}
                 >
                   <Play className="h-4.5 w-4.5 fill-white" />
@@ -104,11 +140,21 @@ export const RoomPage = () => {
                 </Button>
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-4">
                 <p className="text-xs text-muted font-semibold leading-relaxed animate-pulse">
                   ⌛ Waiting for host to start the game...
                 </p>
-                <div className="border border-dashed border-neutral-300 p-3 bg-card mt-2 text-center text-xs text-muted font-bold uppercase">
+
+                <div className="flex flex-col gap-2">
+                  <span className="text-[10px] font-extrabold tracking-wide uppercase text-muted">
+                    Selected Difficulty
+                  </span>
+                  <div className="border-3 border-main px-3 py-2 bg-white text-xs font-black uppercase text-center tracking-wider">
+                    {difficulty}
+                  </div>
+                </div>
+
+                <div className="border border-dashed border-neutral-300 p-3 bg-card text-center text-xs text-muted font-bold uppercase">
                   Prepare Your Mind
                 </div>
               </div>

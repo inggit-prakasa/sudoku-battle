@@ -24,7 +24,7 @@ const SOLVED_SEEDS = [
 ];
 
 // Generates a randomized valid Sudoku and masks some cells
-function generateSudoku() {
+function generateSudoku(difficulty = 'medium') {
     let grid = JSON.parse(JSON.stringify(SOLVED_SEEDS[0]));
 
     // Shuffle helper (Fisher-Yates)
@@ -101,7 +101,13 @@ function generateSudoku() {
 
     // Remove cells to create a playable puzzle
     const puzzle = JSON.parse(JSON.stringify(grid));
-    const cellsToRemove = 1; // 40 empty spaces (standard medium puzzle)
+    const DIFFICULTY_CELLS = {
+        test: 1,
+        easy: 30,
+        medium: 45,
+        hard: 60
+    };
+    const cellsToRemove = DIFFICULTY_CELLS[difficulty] || 45;
     const positions = [];
     for (let r = 0; r < 9; r++) {
         for (let c = 0; c < 9; c++) {
@@ -120,7 +126,19 @@ function generateSudoku() {
 
 // Memory State
 const players = {}; // socket.id -> { name, room }
-const rooms = {};   // roomName -> { status, puzzle, solution, players, totalEmptyCells }
+const rooms = {};   // roomName -> { status, puzzle, solution, players, totalEmptyCells, difficulty }
+
+// Helper to construct room state payload for broadcast
+function getRoomUpdatePayload(roomName) {
+    const room = rooms[roomName];
+    if (!room) return null;
+    return {
+        status: room.status,
+        players: room.players,
+        totalEmptyCells: room.totalEmptyCells,
+        difficulty: room.difficulty || 'medium'
+    };
+}
 
 io.on('connection', (socket) => {
     console.log(`[connect] ${socket.id}`);
@@ -136,7 +154,8 @@ io.on('connection', (socket) => {
                 puzzle: null,
                 solution: null,
                 players: {},
-                totalEmptyCells: 0
+                totalEmptyCells: 0,
+                difficulty: 'medium'
             };
         }
 
@@ -151,11 +170,7 @@ io.on('connection', (socket) => {
         console.log(`[join] ${name} (${socket.id}) masuk ke room "${room}" (total: ${roomSize})`);
 
         // Broadcast room update to everyone in the room
-        io.to(room).emit('room-update', {
-            status: rooms[room].status,
-            players: rooms[room].players,
-            totalEmptyCells: rooms[room].totalEmptyCells
-        });
+        io.to(room).emit('room-update', getRoomUpdatePayload(room));
 
         // System broadcast notification
         io.to(room).emit('player-joined', {
@@ -163,6 +178,27 @@ io.on('connection', (socket) => {
             socketId: socket.id,
             roomSize
         });
+    });
+
+    // --- CHANGE DIFFICULTY ---
+    socket.on('change-difficulty', ({ difficulty }) => {
+        const playerInfo = players[socket.id];
+        if (!playerInfo) return;
+
+        const room = playerInfo.room;
+        const game = rooms[room];
+        if (!game || game.status !== 'waiting') return;
+
+        // Only the host (first player in the list) can change difficulty
+        const playerEntries = Object.entries(game.players);
+        const hostId = playerEntries[0]?.[0];
+        if (socket.id !== hostId) return;
+
+        if (['easy', 'medium', 'hard', 'test'].includes(difficulty)) {
+            game.difficulty = difficulty;
+            console.log(`[difficulty] Room "${room}" difficulty set to "${difficulty}"`);
+            io.to(room).emit('room-update', getRoomUpdatePayload(room));
+        }
     });
 
     // --- START GAME ---
@@ -174,7 +210,7 @@ io.on('connection', (socket) => {
         const game = rooms[room];
         if (!game || game.status === 'playing') return;
 
-        const { puzzle, solution } = generateSudoku();
+        const { puzzle, solution } = generateSudoku(game.difficulty || 'medium');
         game.puzzle = puzzle;
         game.solution = solution;
         game.status = 'playing';
@@ -262,11 +298,7 @@ io.on('connection', (socket) => {
         socket.emit('move-result', { r, c, val, isCorrect, mistakes: player.mistakes, progress: player.progress });
 
         // Broadcast room update (progress bar updates, mistakes counter) to everyone
-        io.to(room).emit('room-update', {
-            status: game.status,
-            players: game.players,
-            totalEmptyCells: game.totalEmptyCells
-        });
+        io.to(room).emit('room-update', getRoomUpdatePayload(room));
     });
 
     // --- RESET GAME ---
@@ -291,11 +323,7 @@ io.on('connection', (socket) => {
 
         console.log(`[reset] Game di-reset di room "${room}" oleh ${playerInfo.name}`);
 
-        io.to(room).emit('room-update', {
-            status: game.status,
-            players: game.players,
-            totalEmptyCells: 0
-        });
+        io.to(room).emit('room-update', getRoomUpdatePayload(room));
     });
 
     // --- LEAVE ROOM SECURITY / CLEANUP ---
@@ -315,11 +343,7 @@ io.on('connection', (socket) => {
                 delete rooms[room];
                 console.log(`[cleanup] Room "${room}" telah dihapus karena kosong`);
             } else {
-                io.to(room).emit('room-update', {
-                    status: rooms[room].status,
-                    players: rooms[room].players,
-                    totalEmptyCells: rooms[room].totalEmptyCells
-                });
+                io.to(room).emit('room-update', getRoomUpdatePayload(room));
                 io.to(room).emit('player-left', { name });
             }
         }
@@ -341,11 +365,7 @@ io.on('connection', (socket) => {
                     delete rooms[room];
                     console.log(`[cleanup] Room "${room}" telah dihapus karena kosong`);
                 } else {
-                    io.to(room).emit('room-update', {
-                        status: rooms[room].status,
-                        players: rooms[room].players,
-                        totalEmptyCells: rooms[room].totalEmptyCells
-                    });
+                    io.to(room).emit('room-update', getRoomUpdatePayload(room));
                     io.to(room).emit('player-left', { name });
                 }
             }
