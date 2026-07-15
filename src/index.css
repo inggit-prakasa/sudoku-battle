@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: #F5F5F0;
+  }
+}
+
+/* Sudoku grid custom styles to support crisp lines without shadows */
+.sudoku-cell-thick-right {
+  border-right-width: 3px !important;
+  border-right-color: #0A0A0A !important;
+}
+
+.sudoku-cell-thick-bottom {
+  border-bottom-width: 3px !important;
+  border-bottom-color: #0A0A0A !important;
+}
+
+/* Prevent double-tap zooming on mobile */
+button,
+.cell {
+  touch-action: manipulation;
+}
+
+/* Toast animation */
+@keyframes slideIn {
+  from {
+    transform: translateY(1rem);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
