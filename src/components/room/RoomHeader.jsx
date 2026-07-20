@@ -55,10 +55,10 @@ export const RoomHeader = () => {
               difficulty === 'easy'
                 ? 'secondary'
                 : difficulty === 'medium'
-                ? 'default'
-                : difficulty === 'hard'
-                ? 'danger'
-                : 'outline'
+                  ? 'default'
+                  : difficulty === 'hard'
+                    ? 'danger'
+                    : 'outline'
             }
             className="uppercase tracking-wider px-2 py-0.5 border-3 font-black text-[10px]"
           >
