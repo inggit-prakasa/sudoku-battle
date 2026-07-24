@@ -50,7 +50,21 @@ export const PlayerList = () => {
                     {player.name}
                   </span>
                   {isSelf && <Badge variant="secondary">You</Badge>}
-                  {isHost && <Badge variant="default">Host</Badge>}
+                  {isHost ? (
+                    <Badge variant="default">Host</Badge>
+                  ) : (
+                    (status === 'waiting' || status === 'starting') && (
+                      player.isReady ? (
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border-2 border-emerald-600 px-2 py-0.5 shadow-flat-sm">
+                          Ready ✓
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border-2 border-amber-500 px-2 py-0.5 shadow-flat-sm">
+                          Not Ready
+                        </span>
+                      )
+                    )
+                  )}
                 </div>
                 
                 {status === 'playing' && (

@@ -4,10 +4,12 @@ export const useRoomStore = create((set, get) => ({
   roomName: '',
   playerName: '',
   players: {},
-  status: 'waiting', // 'waiting' | 'playing' | 'gameover'
+  status: 'waiting', // 'waiting' | 'starting' | 'playing' | 'gameover'
   winner: null,
   totalEmptyCells: 0,
   difficulty: 'medium',
+  messages: [],
+  countdown: null,
   toasts: [],
 
   setRoom: (roomName, playerName) => set({ roomName, playerName }),
@@ -21,6 +23,14 @@ export const useRoomStore = create((set, get) => ({
 
   setWinner: (winner) => set({ winner }),
 
+  setCountdown: (countdown) => set({ countdown }),
+
+  addChatMessage: (msg) => set((state) => ({
+    messages: [...state.messages, msg]
+  })),
+
+  setChatHistory: (messages) => set({ messages: messages || [] }),
+
   clearRoom: () => set({
     roomName: '',
     playerName: '',
@@ -28,7 +38,9 @@ export const useRoomStore = create((set, get) => ({
     status: 'waiting',
     winner: null,
     totalEmptyCells: 0,
-    difficulty: 'medium'
+    difficulty: 'medium',
+    messages: [],
+    countdown: null
   }),
 
   addToast: (message, type = 'info') => {

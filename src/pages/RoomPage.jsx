@@ -6,9 +6,11 @@ import { initializeSocketListeners } from '../sockets/socket';
 import AppShell from '../components/layout/AppShell';
 import RoomHeader from '../components/room/RoomHeader';
 import PlayerList from '../components/room/PlayerList';
+import RoomChat from '../components/room/RoomChat';
+import CountdownOverlay from '../components/room/CountdownOverlay';
 import JoinRoom from '../components/lobby/JoinRoom';
 import { Button } from '../components/ui/Button';
-import { Users, Play } from 'lucide-react';
+import { Users, Play, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export const RoomPage = () => {
@@ -22,7 +24,6 @@ export const RoomPage = () => {
   const difficulty = useRoomStore((state) => state.difficulty);
 
   const socket = useSocketStore((state) => state.socket);
-  const connect = useSocketStore((state) => state.connect);
 
   // 1. Initialize listeners if socket is connected
   useEffect(() => {
@@ -62,14 +63,28 @@ export const RoomPage = () => {
     );
   }
 
-  // Host detection: First player in entries
+  // Host detection & ready state computations
   const playerEntries = Object.entries(players);
   const hostId = playerEntries[0]?.[0];
   const isHost = socket && socket.id === hostId;
 
+  const selfSocketId = socket?.id;
+  const selfPlayer = players[selfSocketId] || {};
+  const isSelfReady = !!selfPlayer.isReady;
+
+  const nonHostEntries = playerEntries.filter(([id]) => id !== hostId);
+  const allNonHostReady = nonHostEntries.every(([, p]) => p.isReady);
+  const canHostStart = nonHostEntries.length === 0 || allNonHostReady;
+
   const handleStartGame = () => {
     if (socket) {
       socket.emit('start-game');
+    }
+  };
+
+  const handleToggleReady = () => {
+    if (socket) {
+      socket.emit('toggle-ready');
     }
   };
 
@@ -84,84 +99,115 @@ export const RoomPage = () => {
       <div className="flex flex-col gap-6">
         <RoomHeader />
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-          {/* Left panel: player list */}
-          <div className="md:col-span-2 flex flex-col gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left panel: Player List & Lobby Controls */}
+          <div className="lg:col-span-7 flex flex-col gap-6">
             <PlayerList />
+
+            {/* Lobby Controls Card */}
+            <div className="border-3 border-main p-5 bg-accent-light flex flex-col gap-4 shadow-flat-sm">
+              <h3 className="text-sm font-extrabold tracking-wide uppercase select-none border-b border-neutral-300 pb-2">
+                Lobby Controls
+              </h3>
+
+              {isHost ? (
+                <div className="flex flex-col gap-4">
+                  <p className="text-xs text-muted font-semibold leading-relaxed">
+                    As the <span className="font-bold text-main">Host</span>, you can change difficulty and start the battle once all players click <span className="text-emerald-700 font-bold">READY</span>.
+                  </p>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] font-extrabold tracking-wide uppercase text-muted">
+                      Game Difficulty
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {['easy', 'medium', 'hard', 'test'].map((level) => {
+                        const isSelected = difficulty === level;
+                        return (
+                          <button
+                            key={level}
+                            type="button"
+                            onClick={() => handleDifficultyChange(level)}
+                            className={cn(
+                              "border-3 border-main px-3 py-2 text-xs font-black uppercase transition-all duration-100 select-none active:translate-x-[2px] active:translate-y-[2px] active:shadow-none text-center",
+                              {
+                                "bg-primary text-white shadow-flat-sm": isSelected,
+                                "bg-white text-main hover:bg-accent-highlight shadow-flat-sm": !isSelected
+                              }
+                            )}
+                          >
+                            {level}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {!canHostStart && (
+                    <div className="flex items-center gap-2 border-2 border-amber-500 bg-amber-100 p-2.5 text-xs text-amber-900 font-bold">
+                      <AlertCircle className="h-4 w-4 text-amber-700 flex-shrink-0" />
+                      <span>Waiting for all players to set state to READY...</span>
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={handleStartGame}
+                    variant="default"
+                    className={cn("w-full flex items-center justify-center gap-2 py-3 mt-1", {
+                      "opacity-50 cursor-not-allowed": !canHostStart
+                    })}
+                    disabled={!canHostStart || status === 'starting'}
+                  >
+                    <Play className="h-4.5 w-4.5 fill-white" />
+                    {status === 'starting' ? 'Starting Battle...' : 'Start Sudoku Battle'}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  <div className="flex justify-between items-center bg-white border-2 border-main p-3">
+                    <span className="text-xs font-extrabold uppercase text-muted">Selected Difficulty</span>
+                    <span className="text-xs font-black uppercase bg-primary text-white px-2.5 py-1 border border-main">
+                      {difficulty}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-muted font-semibold leading-relaxed">
+                    Set your status to <span className="font-bold text-emerald-700">READY</span> so the host can start the game!
+                  </p>
+
+                  <Button
+                    onClick={handleToggleReady}
+                    variant="outline"
+                    className={cn("w-full flex items-center justify-center gap-2 py-3.5 font-black text-sm transition-all", {
+                      "bg-emerald-500 hover:bg-emerald-600 text-white border-3 border-main shadow-flat-sm": !isSelfReady,
+                      "bg-amber-400 hover:bg-amber-500 text-main border-3 border-main shadow-flat-sm": isSelfReady
+                    })}
+                  >
+                    {isSelfReady ? (
+                      <>
+                        <CheckCircle2 className="h-4.5 w-4.5" />
+                        YOU ARE READY (CLICK TO CANCEL)
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4.5 w-4.5 fill-white" />
+                        SET STATE READY
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Right panel: actions/instructions */}
-          <div className="border-3 border-main p-5 bg-accent-light flex flex-col gap-4">
-            <h3 className="text-sm font-extrabold tracking-wide uppercase select-none border-b border-neutral-300 pb-2">
-              Lobby Controls
-            </h3>
-
-            {isHost ? (
-              <div className="flex flex-col gap-4">
-                <p className="text-xs text-muted font-semibold leading-relaxed">
-                  As the **Host**, you can select the game difficulty and start the battle once all players have joined.
-                </p>
-
-                <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-extrabold tracking-wide uppercase text-muted">
-                    Game Difficulty
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {['easy', 'medium', 'hard', 'test'].map((level) => {
-                      const isSelected = difficulty === level;
-                      return (
-                        <button
-                          key={level}
-                          type="button"
-                          onClick={() => handleDifficultyChange(level)}
-                          className={cn(
-                            "border-3 border-main px-3 py-2 text-xs font-black uppercase transition-all duration-100 select-none active:translate-x-[2px] active:translate-y-[2px] active:shadow-none text-center",
-                            {
-                              "bg-primary text-white shadow-flat-sm": isSelected,
-                              "bg-white text-main hover:bg-accent-highlight shadow-flat-sm": !isSelected
-                            }
-                          )}
-                        >
-                          {level}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <Button
-                  onClick={handleStartGame}
-                  variant="default"
-                  className="w-full flex items-center justify-center gap-2 py-3 mt-1"
-                  disabled={playerEntries.length === 0}
-                >
-                  <Play className="h-4.5 w-4.5 fill-white" />
-                  Start Sudoku Battle
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-4">
-                <p className="text-xs text-muted font-semibold leading-relaxed animate-pulse">
-                  ⌛ Waiting for host to start the game...
-                </p>
-
-                <div className="flex flex-col gap-2">
-                  <span className="text-[10px] font-extrabold tracking-wide uppercase text-muted">
-                    Selected Difficulty
-                  </span>
-                  <div className="border-3 border-main px-3 py-2 bg-white text-xs font-black uppercase text-center tracking-wider">
-                    {difficulty}
-                  </div>
-                </div>
-
-                <div className="border border-dashed border-neutral-300 p-3 bg-card text-center text-xs text-muted font-bold uppercase">
-                  Prepare Your Mind
-                </div>
-              </div>
-            )}
+          {/* Right panel: Room Chat */}
+          <div className="lg:col-span-5 w-full">
+            <RoomChat />
           </div>
         </div>
       </div>
+
+      <CountdownOverlay />
     </AppShell>
   );
 };

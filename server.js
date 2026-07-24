@@ -132,7 +132,7 @@ function generateSudoku(difficulty = 'medium') {
 
 // Memory State
 const players = {}; // socket.id -> { name, room }
-const rooms = {};   // roomName -> { status, puzzle, solution, players, totalEmptyCells, difficulty }
+const rooms = {};   // roomName -> { status, puzzle, solution, players, messages, totalEmptyCells, difficulty }
 
 // Helper to construct room state payload for broadcast
 function getRoomUpdatePayload(roomName) {
@@ -146,6 +146,24 @@ function getRoomUpdatePayload(roomName) {
     };
 }
 
+// Helper to add and broadcast system chat messages
+function addSystemChatMessage(roomName, text) {
+    const room = rooms[roomName];
+    if (!room) return;
+    const msg = {
+        id: 'sys_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+        senderId: 'system',
+        senderName: 'System',
+        text,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isSystem: true
+    };
+    if (!room.messages) room.messages = [];
+    room.messages.push(msg);
+    if (room.messages.length > 100) room.messages.shift();
+    io.to(roomName).emit('chat-message', msg);
+}
+
 io.on('connection', (socket) => {
     console.log(`[connect] ${socket.id}`);
 
@@ -156,10 +174,11 @@ io.on('connection', (socket) => {
 
         if (!rooms[room]) {
             rooms[room] = {
-                status: 'waiting', // waiting, playing, gameover
+                status: 'waiting', // waiting, starting, playing, gameover
                 puzzle: null,
                 solution: null,
                 players: {},
+                messages: [],
                 totalEmptyCells: 0,
                 difficulty: 'medium'
             };
@@ -169,21 +188,73 @@ io.on('connection', (socket) => {
             name,
             progress: 0,
             mistakes: 0,
-            board: null
+            board: null,
+            isReady: false
         };
 
         const roomSize = Object.keys(rooms[room].players).length;
         console.log(`[join] ${name} (${socket.id}) masuk ke room "${room}" (total: ${roomSize})`);
 
+        // Send existing room chat history to newly joined player
+        socket.emit('chat-history', rooms[room].messages || []);
+
         // Broadcast room update to everyone in the room
         io.to(room).emit('room-update', getRoomUpdatePayload(room));
 
-        // System broadcast notification
+        // System broadcast notification & chat message
         io.to(room).emit('player-joined', {
             name,
             socketId: socket.id,
             roomSize
         });
+        addSystemChatMessage(room, `${name} joined the room.`);
+    });
+
+    // --- CHAT MESSAGE ---
+    socket.on('send-chat-message', ({ message }) => {
+        const playerInfo = players[socket.id];
+        if (!playerInfo) return;
+
+        const room = playerInfo.room;
+        const game = rooms[room];
+        if (!game) return;
+
+        const text = (message || '').trim();
+        if (!text) return;
+
+        const chatMsg = {
+            id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+            senderId: socket.id,
+            senderName: playerInfo.name,
+            text,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isSystem: false
+        };
+
+        if (!game.messages) game.messages = [];
+        game.messages.push(chatMsg);
+        if (game.messages.length > 100) game.messages.shift();
+
+        io.to(room).emit('chat-message', chatMsg);
+    });
+
+    // --- TOGGLE READY ---
+    socket.on('toggle-ready', () => {
+        const playerInfo = players[socket.id];
+        if (!playerInfo) return;
+
+        const room = playerInfo.room;
+        const game = rooms[room];
+        if (!game || game.status !== 'waiting') return;
+
+        const player = game.players[socket.id];
+        if (!player) return;
+
+        player.isReady = !player.isReady;
+        const statusText = player.isReady ? 'is READY! 🟢' : 'is NOT READY 🟡';
+        addSystemChatMessage(room, `${player.name} ${statusText}`);
+
+        io.to(room).emit('room-update', getRoomUpdatePayload(room));
     });
 
     // --- CHANGE DIFFICULTY ---
@@ -203,47 +274,83 @@ io.on('connection', (socket) => {
         if (['easy', 'medium', 'hard', 'test'].includes(difficulty)) {
             game.difficulty = difficulty;
             console.log(`[difficulty] Room "${room}" difficulty set to "${difficulty}"`);
+            addSystemChatMessage(room, `Difficulty changed to ${difficulty.toUpperCase()}`);
             io.to(room).emit('room-update', getRoomUpdatePayload(room));
         }
     });
 
-    // --- START GAME ---
+    // --- START GAME WITH COUNTDOWN ---
     socket.on('start-game', () => {
         const playerInfo = players[socket.id];
         if (!playerInfo) return;
 
         const room = playerInfo.room;
         const game = rooms[room];
-        if (!game || game.status === 'playing') return;
+        if (!game || game.status !== 'waiting') return;
 
-        const { puzzle, solution } = generateSudoku(game.difficulty || 'medium');
-        game.puzzle = puzzle;
-        game.solution = solution;
-        game.status = 'playing';
+        const playerEntries = Object.entries(game.players);
+        const hostId = playerEntries[0]?.[0];
+        if (socket.id !== hostId) return;
 
-        // Count empty cells
-        let emptyCells = 0;
-        for (let r = 0; r < 9; r++) {
-            for (let c = 0; c < 9; c++) {
-                if (puzzle[r][c] === 0) emptyCells++;
+        // Check if all non-host players are ready
+        const nonHostPlayers = playerEntries.filter(([id]) => id !== hostId);
+        const allReady = nonHostPlayers.every(([, p]) => p.isReady);
+
+        if (nonHostPlayers.length > 0 && !allReady) {
+            socket.emit('start-game-error', { message: 'All players must be READY before starting!' });
+            return;
+        }
+
+        // Set status to starting countdown
+        game.status = 'starting';
+        io.to(room).emit('room-update', getRoomUpdatePayload(room));
+
+        addSystemChatMessage(room, `Host started the game countdown! Get ready...`);
+
+        // Emit countdown numbers: 3, 2, 1
+        let count = 3;
+        io.to(room).emit('start-countdown', { count });
+
+        const countdownInterval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                io.to(room).emit('start-countdown', { count });
+            } else {
+                clearInterval(countdownInterval);
+                io.to(room).emit('start-countdown', { count: 0 }); // 0 means START!
+
+                const { puzzle, solution } = generateSudoku(game.difficulty || 'medium');
+                game.puzzle = puzzle;
+                game.solution = solution;
+                game.status = 'playing';
+
+                // Count empty cells
+                let emptyCells = 0;
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        if (puzzle[r][c] === 0) emptyCells++;
+                    }
+                }
+                game.totalEmptyCells = emptyCells;
+
+                // Reset players stats and set up individual boards
+                for (const id in game.players) {
+                    game.players[id].progress = 0;
+                    game.players[id].mistakes = 0;
+                    game.players[id].board = JSON.parse(JSON.stringify(puzzle));
+                }
+
+                console.log(`[start] Game dimulai di room "${room}" dengan ${emptyCells} empty cells`);
+
+                io.to(room).emit('game-started', {
+                    puzzle,
+                    totalEmptyCells: emptyCells,
+                    players: game.players
+                });
+
+                addSystemChatMessage(room, `The Sudoku Battle has started! 🚀`);
             }
-        }
-        game.totalEmptyCells = emptyCells;
-
-        // Reset players stats and set up individual boards
-        for (const id in game.players) {
-            game.players[id].progress = 0;
-            game.players[id].mistakes = 0;
-            game.players[id].board = JSON.parse(JSON.stringify(puzzle));
-        }
-
-        console.log(`[start] Game dimulai di room "${room}" dengan ${emptyCells} empty cells`);
-
-        io.to(room).emit('game-started', {
-            puzzle,
-            totalEmptyCells: emptyCells,
-            players: game.players
-        });
+        }, 1000);
     });
 
     // --- SUBMIT CELL MOVE ---
@@ -294,6 +401,7 @@ io.on('connection', (socket) => {
                     winnerName: player.name,
                     players: game.players
                 });
+                addSystemChatMessage(room, `🏆 ${player.name} won the Sudoku Battle!`);
                 return;
             }
         } else {
@@ -325,9 +433,11 @@ io.on('connection', (socket) => {
             game.players[id].progress = 0;
             game.players[id].mistakes = 0;
             game.players[id].board = null;
+            game.players[id].isReady = false;
         }
 
         console.log(`[reset] Game di-reset di room "${room}" oleh ${playerInfo.name}`);
+        addSystemChatMessage(room, `Game was reset by ${playerInfo.name}`);
 
         io.to(room).emit('room-update', getRoomUpdatePayload(room));
     });
@@ -351,6 +461,7 @@ io.on('connection', (socket) => {
             } else {
                 io.to(room).emit('room-update', getRoomUpdatePayload(room));
                 io.to(room).emit('player-left', { name });
+                addSystemChatMessage(room, `${name} left the room.`);
             }
         }
 
@@ -373,6 +484,7 @@ io.on('connection', (socket) => {
                 } else {
                     io.to(room).emit('room-update', getRoomUpdatePayload(room));
                     io.to(room).emit('player-left', { name });
+                    addSystemChatMessage(room, `${name} left the room.`);
                 }
             }
             delete players[socket.id];

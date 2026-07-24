@@ -7,6 +7,8 @@ import { initializeSocketListeners } from '../sockets/socket';
 import AppShell from '../components/layout/AppShell';
 import RoomHeader from '../components/room/RoomHeader';
 import PlayerList from '../components/room/PlayerList';
+import RoomChat from '../components/room/RoomChat';
+import CountdownOverlay from '../components/room/CountdownOverlay';
 import SudokuGrid from '../components/grid/SudokuGrid';
 import GameOverModal from '../components/room/GameOverModal';
 import { Button } from '../components/ui/Button';
@@ -110,10 +112,10 @@ export const GamePage = () => {
         </div>
 
         {/* Play layout */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* Left / Center: The active grid & Numpad */}
-          <div className="md:col-span-8 flex flex-col items-center gap-4">
+          <div className="lg:col-span-7 flex flex-col items-center gap-4">
             <div className="w-full flex justify-center">
               <SudokuGrid />
             </div>
@@ -151,14 +153,18 @@ export const GamePage = () => {
             </div>
           </div>
 
-          {/* Right: Players dashboard */}
-          <div className="md:col-span-4 flex flex-col gap-4 border-3 border-main p-4 bg-card h-full">
-            <PlayerList />
+          {/* Right: Players dashboard & Room Chat */}
+          <div className="lg:col-span-5 flex flex-col gap-5 w-full">
+            <div className="border-3 border-main p-4 bg-card shadow-flat-sm">
+              <PlayerList />
+            </div>
+            <RoomChat className="h-[300px]" />
           </div>
         </div>
       </div>
 
-      {/* Overlay game over trigger modal */}
+      {/* Countdown modal & game over modal */}
+      <CountdownOverlay />
       <GameOverModal />
     </AppShell>
   );
